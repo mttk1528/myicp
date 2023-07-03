@@ -36,7 +36,7 @@ class ICP:
         self,
         optimization_method: str,
         max_iter: int = 10,
-        neibour_points_num: int = 10,
+        neighbor_points_num: int = 10,
         init_homogeneous_params: Tuple[float] = (0., 0., 0., 0., 0., 0.),
         convergence_condition: float = 0.01
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -50,7 +50,7 @@ class ICP:
             "point to plane", or "color".
         max_iter : int
             The maximum number of iterations to perform.
-        neibour_points_num : int, optional
+        neighbor_points_num : int, optional
             The number of neighbor points to consider
             when calculating the normal vector. Defaults to 10.
         init_homogeneous_params : Tuple[float], optional
@@ -91,7 +91,7 @@ class ICP:
         print("Starting optimization...")
         # iterate optimization
         for step in range(max_iter):
-            optim.update(neibour_points_num)
+            optim.update(neighbor_points_num)
             residual_list[step] = optim.residual
             self._print_status(step, max_iter, optim.residual)
             if step == max_iter - 1:

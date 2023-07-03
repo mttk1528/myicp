@@ -121,7 +121,7 @@ class PointCloud():
     def calc_normal_vectors(
         self,
         correspondence_idx: np.ndarray,
-        neibour_points_num: int
+        neighbor_points_num: int
     ) -> np.ndarray:
         """
         Calculates the normal vectors for the points at the given indices.
@@ -130,7 +130,7 @@ class PointCloud():
         ----------
         correspondence_idx : np.ndarray
             The indices of the points.
-        neibour_points_num : int
+        neighbor_points_num : int
             The number of neighbor points to consider when calculating
             the normal vector.
         """
@@ -143,7 +143,7 @@ class PointCloud():
             correspondence = self.projective_coordinate[idx]
             _, nearest_neighbor_idx_lst = self.kdtree.query(
                 x=correspondence,
-                k=neibour_points_num + 1  # nearest neighbor is itself
+                k=neighbor_points_num + 1  # nearest neighbor is itself
             )
             nearest_neighbor_lst = self.projective_coordinate[
                 nearest_neighbor_idx_lst[1:]]
