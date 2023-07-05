@@ -66,14 +66,15 @@ class ICP:
             The initial homogenous parameters (alpha, beta, gamma, tx, ty, tz).
             Alpha, beta, and gamma are radians.
             Defaults to (0., 0., 0., 0., 0., 0.).
-        convergence_condition : float, optional けすとおもう！！！！！！！！！！！！！！！！！！
+        convergence_condition : float, optional      (現在使っていません)
             The convergence condition for the ICP algorithm. Defaults to 0.01.
 
         Returns
         -------
-        Tuple[np.ndarray, np.ndarray, np.ndarray]
+        Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
             The final transformation matrix and the transformed
-            moving point cloud, and the residual list.
+            moving point cloud and the residual list, and
+            the point to point residual list.
         """
         time_start = time.time()
 
@@ -98,17 +99,18 @@ class ICP:
             sample_points_num=self.sample_points_num,
             init_homogeneous_params=init_homogeneous_params,
         )
-        # print("residual = {:.10f}".format(optim.residual))
         residual_list = np.zeros(max_iter)
+        residual_ptop_list = np.zeros(max_iter)
         # iterate optimization
         for step in tqdm(range(max_iter), bar_format="{l_bar}{bar:30}{r_bar}"):
             optim.update(neighbor_points_num)
             residual_list[step] = optim.residual
+            residual_ptop_list[step] = optim.residual_ptop
             # if _check_convergence(step, convergence_condition):
             #     pass
             if step == max_iter - 1:
                 print("Reached max iteration!  ", end="")
-        self._print_result(step, residual_list)
+        self._print_result(step, residual_list, residual_ptop_list)
         H_result = optim.H_ret
         transformed_pcd_mov = self.pcd_mov.projective_coordinate
         # save as txt
@@ -116,7 +118,7 @@ class ICP:
 
         time_end = time.time()
         print(f"Total execution time: {(time_end - time_start):.5f}s")
-        return H_result, transformed_pcd_mov, residual_list
+        return H_result, transformed_pcd_mov, residual_list, residual_ptop_list
 
     # def _check_convergence(
     #         self, step: int, convergence_condition: float = 0.01):
@@ -130,7 +132,12 @@ class ICP:
     #     else:
     #         return False
 
-    def _print_result(self, max_step: int, residual_list: float):
+    def _print_result(
+        self,
+        max_step: int,
+        residual_list: np.ndarray,
+        residual_ptop_list: np.ndarray
+    ) -> None:
         """
         Prints the status of the current iteration of the ICP algorithm.
 
@@ -141,23 +148,28 @@ class ICP:
         residual_list : float
             The list of the residual.
         """
-        # average correspondence よみだし時間
         print("Showing progress log:")
         for i in range(max_step + 1):
             if i == 0:
-                # print("----------------------------")
+                print("------------------------------------------------")
                 print(
                     f"| {'iteration':^9s}   "
-                    f"{'residuals':^12s} | "
+                    f"{'residuals':^12s} "
+                    f"  {'residuals(ptop)':^17s} | "
                 )
             print(
                 f"| {i:^9d}   "
-                f"{residual_list[i]:^12.10f} |"
+                f"{residual_list[i]:^12.10f} "
+                f"  {residual_ptop_list[i]:^17.10f} |"
             )
             if i == max_step:
-                # print("----------------------------")
+                print("------------------------------------------------")
                 pass
-        print("Final residual = {:.10f}".format(residual_list[max_step]))
+        print("Final residual                  = {:.10f}"
+              .format(residual_list[max_step]))
+        print("Final residual (point to point) = {:.10f}"
+              .format(residual_ptop_list[max_step]))
+
         return None
 
 

@@ -45,6 +45,7 @@ class Optimize:
             utils.homogenous_params_to_homogenous_transformation_matrix(
                 init_homogeneous_params)
         self.residual = 0.
+        self.residual_ptop = 0.
 
     def update(
         self,
@@ -83,31 +84,34 @@ class Optimize:
 
         # update homogenous transformation matrix H
         H_new = self.H
-        if self.optimization_method == "point to plane":
-            rot, trans, self.residual = self._point_to_plane_icp(
-                sample_points=sample_points,
-                correspondence=correspondence,
-                correspondence_normal_vectors=correspondence_normal_vectors,
-            )
-            H_new = utils.homogenous_transformation_matrix(rot, trans)
 
         if self.optimization_method == "point to point":
-            rot, trans, self.residual = self._point_to_point_icp(
-                sample_points=sample_points,
-                correspondence=correspondence,
-            )
+            rot, trans, self.residual, self.residual_ptop\
+                = self._point_to_point_icp(
+                 sample_points=sample_points,
+                 correspondence=correspondence,
+                )
+            H_new = utils.homogenous_transformation_matrix(rot, trans)
+
+        if self.optimization_method == "point to plane":
+            rot, trans, self.residual, self.residual_ptop\
+                = self._point_to_plane_icp(
+                 sample_points=sample_points,
+                 correspondence=correspondence,
+                 correspondence_normal_vectors=correspondence_normal_vectors,
+                )
             H_new = utils.homogenous_transformation_matrix(rot, trans)
 
         if self.optimization_method == "color":
-            H_new, self.residual = self._color_icp(
-                sample_points=sample_points,
-                sample_points_RGB=sample_points_RGB,
-                correspondence=correspondence,
-                correspondence_normal_vectors=correspondence_normal_vectors,
-                correspondence_RGB=correspondence_RGB
-            )
+            H_new, self.residual, self.residual_ptop\
+                = self._color_icp(
+                 sample_points=sample_points,
+                 sample_points_RGB=sample_points_RGB,
+                 correspondence=correspondence,
+                 correspondence_normal_vectors=correspondence_normal_vectors,
+                 correspondence_RGB=correspondence_RGB
+                )
 
-        # print("residual = {:.10f}".format(self.residual))
         self.H = H_new  # update H
         self.pcd_mov.homogenous_transformation(H_new)  # transform pcd_mov
         self.H_ret = np.dot(H_new, self.H_ret)  # update final H
@@ -131,10 +135,10 @@ class Optimize:
 
         Returns
         -------
-        Tuple[np.ndarray, np.ndarray, float]
+        Tuple[np.ndarray, np.ndarray, float, float]
             The rotation and translation that minimizes the distance
-            between the sample_points and their correspondence,
-            and the computed residual.
+            between the sample_points and their correspondence and the
+            computed residual, and the computed point-to-point residual.
         """
         # calculate R that maximizes \sum_i y_i \cdot R p_i in local coordinate
         mu_sample = np.mean(sample_points, axis=0)
@@ -169,7 +173,7 @@ class Optimize:
             residual += float(np.dot(x, x.T))
         residual /= self.sample_points_num
 
-        return rot, trans, residual
+        return rot, trans, residual, residual
 
     def _point_to_plane_icp(
         self,
@@ -192,10 +196,11 @@ class Optimize:
 
         Returns
         -------
-        Tuple[np.ndarray, np.ndarray, float]
+        Tuple[np.ndarray, np.ndarray, float, float]
             The rotation and translation that minimizes
             the distance between the sample_points
-            and their correspondence, and the computed residual.
+            and their correspondence and the computed residual,
+            and the computed point-to-point residual.
         """
         # https://github.com/3d-point-cloud-processing/3dpcp_book_codes/blob/
         # master/section_registration/ICP-point-to-plane.ipynb
@@ -228,7 +233,14 @@ class Optimize:
         rot = utils.axis_angle_to_rotation_matrix(w, theta)
         trans = np.array(list(map(float, u_opt[3:])))
 
-        return rot, trans, residual
+        residual_ptop = 0.  # point to point residual
+        for i in range(self.sample_points_num):
+            x = correspondence[i] - np.dot(
+                rot, sample_points[i].reshape(3, 1)).reshape(1, 3) - trans
+            residual_ptop += float(np.dot(x, x.T))
+        residual_ptop /= self.sample_points_num
+
+        return rot, trans, residual, residual_ptop
 
     # Implementation according to the paper: Colored Point Cloud Registration
     # Revisited, ICCV 2017
@@ -262,12 +274,13 @@ class Optimize:
 
         Returns
         -------
-        Tuple[np.ndarray, float]
+        Tuple[np.ndarray, float, float]
             The transformation matrix that minimizes the distance
             between the sample_points and their correspondence
-            and the difference in color, and the computed residual.
+            and the difference in color and the computed residual,
+            and the computed point-to-point residual.
         """
-        delta = 0.5  # \in [0, 1], weight for joint optimization objective
+        delta = 0.3  # \in [0, 1], weight for joint optimization objective
 
         # YIQ, YUV and NTSC
         rgb_to_intensity_weight = np.array([0.299, 0.587, 0.114])
@@ -358,23 +371,19 @@ class Optimize:
         JTJ = np.sqrt(delta) * JTJ_geo + np.sqrt(1 - delta) * JTJ_col
         JTr = np.sqrt(delta) * JTr_geo + np.sqrt(1 - delta) * JTr_col
 
-        X = np.linalg.solve(JTJ, -JTr)
+        # X = np.linalg.solve(JTJ, -JTr)
+        X = np.dot(np.linalg.pinv(JTJ), -JTr)
         H = utils.homogenous_params_to_homogenous_transformation_matrix(X)
         residual = delta * float(np.dot(r_geo, r_geo.T)) +\
             (1 - delta) * float(np.dot(r_col, r_col.T))  # eq.????????????????
         residual /= self.sample_points_num
-        return H, residual
 
-    """
-    The standard formulation for integrating color into geometric registration
-    algorithms is to lift the alignment into a higher-dimensional space,
-    parameterized by both position and color. Typically,
-    correspondences are established in a four- or six-dimensional space rather
-    than the physical three-dimensional space. This is an elegant approach,
-    but it is liable to introducing erroneous correspondences between points
-    that are distant but have similar color. These correspondences can pull
-    away from the correct solution and prevent the method from establishing
-    a maximally tight alignment.
-    -> joint optimization objective that integrates both geometric and
-    photometric terms を考える
-    """
+        residual_ptop = 0.  # point to point residual
+        for i in range(self.sample_points_num):
+            p = correspondence[i]
+            q_H = np.hstack((sample_points[i], 1)).reshape(4, 1)
+            x = p - np.dot(H, q_H).reshape(1, 4)[0][:3]
+            residual_ptop += float(np.dot(x, x.T))
+        residual_ptop /= self.sample_points_num
+
+        return H, residual, residual_ptop
