@@ -113,6 +113,64 @@ class Optimize:
         self.H_ret = np.dot(H_new, self.H_ret)  # update final H
         return None
 
+    # 論文9 どれ？
+    def _point_to_point_icp(
+        self,
+        sample_points: np.array,
+        correspondence: np.ndarray,
+    ) -> Tuple[np.ndarray, np.ndarray, float]:
+        """
+        Implements the point-to-point ICP algorithm.
+
+        Parameters
+        ----------
+        sample_points : np.array
+            The points sampled from the moving point cloud.
+        correspondence : np.ndarray
+            The corresponding points in the fixed point cloud.
+
+        Returns
+        -------
+        Tuple[np.ndarray, np.ndarray, float]
+            The rotation and translation that minimizes the distance
+            between the sample_points and their correspondence,
+            and the computed residual.
+        """
+        # calculate R that maximizes \sum_i y_i \cdot R p_i in local coordinate
+        mu_sample = np.mean(sample_points, axis=0)
+        mu_corr = np.mean(correspondence, axis=0)
+
+        C = np.zeros((3, 3))  # covariance matrix
+        for i in range(self.sample_points_num):
+            C += np.dot(
+                sample_points[i].reshape(3, 1),
+                correspondence[i].reshape(1, 3))
+        C /= self.sample_points_num
+        C -= np.dot(mu_sample.reshape(3, 1), mu_corr.reshape(1, 3))
+
+        A = C - C.T
+        delta = np.array([A[1, 2], A[2, 0], A[0, 1]])
+        tr_C = np.trace(C)
+
+        N = np.zeros((4, 4))  # move to fix
+        N[0, 0] = tr_C
+        N[0, 1:] = delta
+        N[1:, 0] = delta
+        N[1:, 1:] = C + C.T - tr_C * np.identity(3)
+
+        w, v = np.linalg.eig(N)
+        rot = utils.quaternion_to_rotation_matrix(v[:, np.argmax(w)])
+        trans = mu_corr - np.dot(rot, mu_sample)
+
+        residual = 0.
+        for i in range(self.sample_points_num):
+            x = correspondence[i] - np.dot(
+                rot, sample_points[i].reshape(3, 1)).reshape(1, 3) - trans
+            residual += float(np.dot(x, x.T))
+        residual /= self.sample_points_num
+
+        return rot, trans, residual
+
     def _point_to_plane_icp(
         self,
         sample_points: np.array,
@@ -169,64 +227,6 @@ class Optimize:
 
         rot = utils.axis_angle_to_rotation_matrix(w, theta)
         trans = np.array(list(map(float, u_opt[3:])))
-
-        return rot, trans, residual
-
-    # 論文9 どれ？
-    def _point_to_point_icp(
-        self,
-        sample_points: np.array,
-        correspondence: np.ndarray,
-    ) -> Tuple[np.ndarray, np.ndarray, float]:
-        """
-        Implements the point-to-point ICP algorithm.
-
-        Parameters
-        ----------
-        sample_points : np.array
-            The points sampled from the moving point cloud.
-        correspondence : np.ndarray
-            The corresponding points in the fixed point cloud.
-
-        Returns
-        -------
-        Tuple[np.ndarray, np.ndarray, float]
-            The rotation and translation that minimizes the distance
-            between the sample_points and their correspondence,
-            and the computed residual.
-        """
-        # calculate R that maximizes \sum_i y_i \cdot R p_i in local coordinate
-        mu_sample = np.mean(sample_points, axis=0)
-        mu_corr = np.mean(correspondence, axis=0)
-
-        C = np.zeros((3, 3))  # covariance matrix
-        for i in range(self.sample_points_num):
-            C += np.dot(
-                sample_points[i].reshape(3, 1),
-                correspondence[i].reshape(1, 3))
-        C /= self.sample_points_num
-        C -= np.dot(mu_sample.reshape(3, 1), mu_corr.reshape(1, 3))
-
-        A = C - C.T
-        delta = np.array([A[1, 2], A[2, 0], A[0, 1]])
-        tr_C = np.trace(C)
-
-        N = np.zeros((4, 4))  # move to fix
-        N[0, 0] = tr_C
-        N[0, 1:] = delta
-        N[1:, 0] = delta
-        N[1:, 1:] = C + C.T - tr_C * np.identity(3)
-
-        w, v = np.linalg.eig(N)
-        rot = utils.quaternion_to_rotation_matrix(v[:, np.argmax(w)])
-        trans = mu_corr - np.dot(rot, mu_sample)
-
-        residual = 0.
-        for i in range(self.sample_points_num):
-            x = correspondence[i] - np.dot(
-                rot, sample_points[i].reshape(3, 1)).reshape(1, 3) - trans
-            residual += float(np.dot(x, x.T))
-        residual /= self.sample_points_num
 
         return rot, trans, residual
 
