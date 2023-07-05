@@ -3,7 +3,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 from .kdtree import KDTree
 
-# import time
+import time
 # import sys
 # from tqdm import tqdm
 
@@ -37,8 +37,8 @@ class PointCloud():
         """
         self.points_num = pcd.shape[0]
         self.sample_points_num = sample_points_num
-        self.pcd_RGB = pcd[:, 3:]
-        self.projective_coordinate = pcd[:, :3]
+        self.pcd_RGB = pcd[:, 3:].copy()
+        self.projective_coordinate = pcd[:, :3].copy()
         self.sample_indices = np.random.choice(
             self.points_num,
             sample_points_num,
@@ -58,10 +58,14 @@ class PointCloud():
             Use the faster cKDTree if True, otherwise use custom KDTree.
         """
         # 自作の方は重い というかscipy.spatial.cKDTreeが速すぎる
+        print("Building KDTree for the target point cloud... ", end="")
+        time_start = time.time()
         if fast:
             self.kdtree = cKDTree(self.projective_coordinate)
         else:
             self.kdtree = KDTree(self.projective_coordinate)
+        time_end = time.time()
+        print(f" done! ({(time_end - time_start):.5f}s)")
         return None
 
     def select_sample_points(self) -> None:
