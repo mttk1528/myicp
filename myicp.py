@@ -38,7 +38,6 @@ class ICP:
         self.pcd_fix = pointcloud.PointCloud(
             pcd_fix, sample_points_num, is_fixed=True, fast=fast)
         self.pcd_mov = pointcloud.PointCloud(pcd_mov, sample_points_num)
-        self.pcd_mov_orig = pcd_mov.copy()
         self.sample_points_num = sample_points_num
 
     def exec(
@@ -78,8 +77,8 @@ class ICP:
         """
         time_start = time.time()
 
-        self.pcd_mov = pointcloud.PointCloud(
-            self.pcd_mov_orig, self.sample_points_num)
+        self.pcd_mov.projective_coordinate = \
+            self.pcd_mov.projective_coordinate_orig.copy()
 
         method_list = ["point to point", "point to plane", "color"]
         if optimization_method not in method_list:
@@ -91,7 +90,7 @@ class ICP:
                        delimiter=" ")
             return None, self.pcd_mov.projective_coordinate
 
-        print(f'Executing "{optimization_method}" ICP.')
+        print(f'---Executing "{optimization_method}" ICP---')
         optim = optimize.Optimize(
             optimization_method=optimization_method,
             pcd_fix=self.pcd_fix,
@@ -100,19 +99,24 @@ class ICP:
             init_homogeneous_params=init_homogeneous_params,
         )
         residual_list = np.zeros(max_iter)
-        residual_ptop_list = np.zeros(max_iter)
+        residual_ptop_list = np.zeros(max_iter + 1)
+
         # iterate optimization
         for step in tqdm(range(max_iter), bar_format="{l_bar}{bar:30}{r_bar}"):
-            optim.update(neighbor_points_num)
+            optim.update(step, neighbor_points_num)
             residual_list[step] = optim.residual
-            residual_ptop_list[step] = optim.residual_ptop
+            residual_ptop_list[step + 1] = optim.residual_ptop
             # if _check_convergence(step, convergence_condition):
             #     pass
             if step == max_iter - 1:
                 print("Reached max iteration!  ", end="")
+        residual_ptop_list[0] = optim.residual_ptop_init
         self._print_result(step, residual_list, residual_ptop_list)
         H_result = optim.H_ret
-        transformed_pcd_mov = self.pcd_mov.projective_coordinate
+        transformed_pcd_mov = np.hstack((
+            self.pcd_mov.projective_coordinate,
+            self.pcd_mov.pcd_RGB
+        ))
         # save as txt
         np.savetxt("ICP_result.txt", transformed_pcd_mov, delimiter=" ")
 

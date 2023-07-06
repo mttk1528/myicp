@@ -45,10 +45,13 @@ class Optimize:
             utils.homogenous_params_to_homogenous_transformation_matrix(
                 init_homogeneous_params)
         self.residual = 0.
+        self.residual_init = 0.
         self.residual_ptop = 0.
+        self.residual_ptop_init = 0.
 
     def update(
         self,
+        step: int,
         neighbor_points_num: int
     ) -> None:
         """
@@ -57,6 +60,8 @@ class Optimize:
 
         Parameters
         ----------
+        step : int
+            The current iteration step.
         neighbor_points_num : int
             The number of neighbor points to consider
             when calculating the normal vector.
@@ -82,11 +87,19 @@ class Optimize:
                 neighbor_points_num
             )
 
+        # calculate initial residual
+        if step == 0:
+            for i in range(self.sample_points_num):
+                self.residual_ptop_init += np.linalg.norm(
+                    correspondence[i] - sample_points[i]
+                )
+            self.residual_ptop_init /= self.sample_points_num
+
         # update homogenous transformation matrix H
         H_new = self.H
 
         if self.optimization_method == "point to point":
-            rot, trans, self.residual, self.residual_ptop\
+            rot, trans, self.residual\
                 = self._point_to_point_icp(
                  sample_points=sample_points,
                  correspondence=correspondence,
@@ -94,7 +107,7 @@ class Optimize:
             H_new = utils.homogenous_transformation_matrix(rot, trans)
 
         if self.optimization_method == "point to plane":
-            rot, trans, self.residual, self.residual_ptop\
+            rot, trans, self.residual\
                 = self._point_to_plane_icp(
                  sample_points=sample_points,
                  correspondence=correspondence,
@@ -103,7 +116,7 @@ class Optimize:
             H_new = utils.homogenous_transformation_matrix(rot, trans)
 
         if self.optimization_method == "color":
-            H_new, self.residual, self.residual_ptop\
+            H_new, self.residual\
                 = self._color_icp(
                  sample_points=sample_points,
                  sample_points_RGB=sample_points_RGB,
@@ -115,6 +128,15 @@ class Optimize:
         self.H = H_new  # update H
         self.pcd_mov.homogenous_transformation(H_new)  # transform pcd_mov
         self.H_ret = np.dot(H_new, self.H_ret)  # update final H
+
+        self.residual_ptop = 0
+        for i in range(self.sample_points_num):
+            self.residual_ptop += np.linalg.norm(
+                correspondence[i] -
+                self.pcd_mov.projective_coordinate[indices[i]]
+            )
+        self.residual_ptop /= self.sample_points_num
+
         return None
 
     # 論文9 どれ？
@@ -135,10 +157,10 @@ class Optimize:
 
         Returns
         -------
-        Tuple[np.ndarray, np.ndarray, float, float]
+        Tuple[np.ndarray, np.ndarray, float]
             The rotation and translation that minimizes the distance
-            between the sample_points and their correspondence and the
-            computed residual, and the computed point-to-point residual.
+            between the sample_points and their correspondence, and the
+            computed residual.
         """
         # calculate R that maximizes \sum_i y_i \cdot R p_i in local coordinate
         mu_sample = np.mean(sample_points, axis=0)
@@ -173,7 +195,7 @@ class Optimize:
             residual += float(np.dot(x, x.T))
         residual /= self.sample_points_num
 
-        return rot, trans, residual, residual
+        return rot, trans, residual
 
     def _point_to_plane_icp(
         self,
@@ -196,11 +218,10 @@ class Optimize:
 
         Returns
         -------
-        Tuple[np.ndarray, np.ndarray, float, float]
+        Tuple[np.ndarray, np.ndarray, float]
             The rotation and translation that minimizes
             the distance between the sample_points
-            and their correspondence and the computed residual,
-            and the computed point-to-point residual.
+            and their correspondence, and the computed residual.
         """
         # https://github.com/3d-point-cloud-processing/3dpcp_book_codes/blob/
         # master/section_registration/ICP-point-to-plane.ipynb
@@ -226,21 +247,17 @@ class Optimize:
 
         residual /= self.sample_points_num
 
-        u_opt = np.dot(np.linalg.inv(A), b)
+        try:
+            u_opt = np.dot(np.linalg.inv(A), b)
+        except np.linalg.LinAlgError:
+            u_opt = np.dot(np.linalg.pinv(A), b)
         theta = np.linalg.norm(u_opt[:3])
         w = (u_opt[:3] / theta).reshape(-1)
 
         rot = utils.axis_angle_to_rotation_matrix(w, theta)
         trans = np.array(list(map(float, u_opt[3:])))
 
-        residual_ptop = 0.  # point to point residual
-        for i in range(self.sample_points_num):
-            x = correspondence[i] - np.dot(
-                rot, sample_points[i].reshape(3, 1)).reshape(1, 3) - trans
-            residual_ptop += float(np.dot(x, x.T))
-        residual_ptop /= self.sample_points_num
-
-        return rot, trans, residual, residual_ptop
+        return rot, trans, residual
 
     # Implementation according to the paper: Colored Point Cloud Registration
     # Revisited, ICCV 2017
@@ -274,18 +291,17 @@ class Optimize:
 
         Returns
         -------
-        Tuple[np.ndarray, float, float]
+        Tuple[np.ndarray, float]
             The transformation matrix that minimizes the distance
             between the sample_points and their correspondence
-            and the difference in color and the computed residual,
-            and the computed point-to-point residual.
+            and the difference in color, and the computed residual.
         """
-        delta = 0.3  # \in [0, 1], weight for joint optimization objective
+        delta = 0.1  # \in [0, 1], weight for joint optimization objective
 
         # YIQ, YUV and NTSC
-        rgb_to_intensity_weight = np.array([0.299, 0.587, 0.114])
+        # rgb_to_intensity_weight = np.array([0.299, 0.587, 0.114])
         # # sRGB (and Rec709)
-        # rgb_to_intensity_weight = np.array([0.2126, 0.7152, 0.0722])
+        rgb_to_intensity_weight = np.array([0.2126, 0.7152, 0.0722])
 
         # calculate color gradient for each correspondence
         target_color_gradient = np.zeros((self.sample_points_num, 3))
@@ -321,9 +337,15 @@ class Optimize:
             A[:, -1] = (nn_num - 1) * n_p
             b[-1] = 0
 
-            X = np.dot(
-                np.linalg.pinv(np.dot(A, A.T)),
-                np.dot(A, b).reshape(3, 1)
+            try:
+                X = np.dot(
+                    np.linalg.inv(np.dot(A, A.T)),
+                    np.dot(A, b).reshape(3, 1)
+                )
+            except np.linalg.LinAlgError:
+                X = np.dot(
+                    np.linalg.pinv(np.dot(A, A.T)),
+                    np.dot(A, b).reshape(3, 1)
                 )
             target_color_gradient[i] = X.flatten()
 
@@ -372,18 +394,13 @@ class Optimize:
         JTr = np.sqrt(delta) * JTr_geo + np.sqrt(1 - delta) * JTr_col
 
         # X = np.linalg.solve(JTJ, -JTr)
-        X = np.dot(np.linalg.pinv(JTJ), -JTr)
+        try:
+            X = np.dot(np.linalg.inv(JTJ), -JTr)
+        except np.linalg.LinAlgError:
+            X = np.dot(np.linalg.pinv(JTJ), -JTr)
         H = utils.homogenous_params_to_homogenous_transformation_matrix(X)
         residual = delta * float(np.dot(r_geo, r_geo.T)) +\
             (1 - delta) * float(np.dot(r_col, r_col.T))  # eq.????????????????
-        residual /= self.sample_points_num
+        residual /= self.sample_points_num  # これ変換の後？前？
 
-        residual_ptop = 0.  # point to point residual
-        for i in range(self.sample_points_num):
-            p = correspondence[i]
-            q_H = np.hstack((sample_points[i], 1)).reshape(4, 1)
-            x = p - np.dot(H, q_H).reshape(1, 4)[0][:3]
-            residual_ptop += float(np.dot(x, x.T))
-        residual_ptop /= self.sample_points_num
-
-        return H, residual, residual_ptop
+        return H, residual

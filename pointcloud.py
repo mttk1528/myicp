@@ -44,6 +44,7 @@ class PointCloud():
             sample_points_num,
             replace=False
         )
+        self.projective_coordinate_orig = pcd[:, :3].copy()
 
         if is_fixed:
             self._build_kdtree(fast=fast)
