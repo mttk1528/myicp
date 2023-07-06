@@ -1,8 +1,12 @@
 import numpy as np
 
 from typing import Tuple
+import yaml
+import os
 
 from . import utils, pointcloud
+
+_config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
 
 
 class Optimize:
@@ -139,7 +143,9 @@ class Optimize:
 
         return None
 
-    # 論文9 どれ？
+    # This is implementation of following paper
+    # P.J. Besl, Neil D. McKay,
+    # A Method for Registration of 3-D Shapes, IEEE 1992.
     def _point_to_point_icp(
         self,
         sample_points: np.array,
@@ -197,6 +203,10 @@ class Optimize:
 
         return rot, trans, residual
 
+    # This is implementation of following paper
+    # Kok-Lim Low,
+    # Linear Least-Squares Optimization for
+    # Point-to-Plane ICP Surface Registration, IEEE 2004.
     def _point_to_plane_icp(
         self,
         sample_points: np.array,
@@ -259,10 +269,9 @@ class Optimize:
 
         return rot, trans, residual
 
-    # Implementation according to the paper: Colored Point Cloud Registration
-    # Revisited, ICCV 2017
-    # https://github.com/isl-org/Open3D/blob/master/cpp/open3d/pipelines/registration/ColoredICP.cpp
-    # https://github.com/isl-org/Open3D/blob/master/cpp/open3d/utility/Eigen.cpp
+    # This is implementation of following paper
+    # J. Park, Q.-Y. Zhou, V. Koltun,
+    # Colored Point Cloud Registration Revisited, ICCV 2017.
     def _color_icp(
         self,
         sample_points: np.array,
@@ -296,12 +305,13 @@ class Optimize:
             between the sample_points and their correspondence
             and the difference in color, and the computed residual.
         """
-        delta = 0.1  # \in [0, 1], weight for joint optimization objective
-
-        # YIQ, YUV and NTSC
-        # rgb_to_intensity_weight = np.array([0.299, 0.587, 0.114])
-        # # sRGB (and Rec709)
-        rgb_to_intensity_weight = np.array([0.2126, 0.7152, 0.0722])
+        with open(_config_path) as f:
+            _params = yaml.safe_load(f)
+        # \in [0, 1], weight for joint optimization objective
+        delta = _params["color_icp_delta"]
+        # 0 for sRGB (and Rec709), 1 for YIQ, YUV and NTSC
+        rgb_to_intensity_weight = \
+            np.array(_params["rgb_to_intensity_weight"][0])
 
         # calculate color gradient for each correspondence
         target_color_gradient = np.zeros((self.sample_points_num, 3))
@@ -401,6 +411,6 @@ class Optimize:
         H = utils.homogenous_params_to_homogenous_transformation_matrix(X)
         residual = delta * float(np.dot(r_geo, r_geo.T)) +\
             (1 - delta) * float(np.dot(r_col, r_col.T))  # eq.????????????????
-        residual /= self.sample_points_num  # これ変換の後？前？
+        residual /= self.sample_points_num
 
         return H, residual

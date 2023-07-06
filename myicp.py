@@ -65,7 +65,7 @@ class ICP:
             The initial homogenous parameters (alpha, beta, gamma, tx, ty, tz).
             Alpha, beta, and gamma are radians.
             Defaults to (0., 0., 0., 0., 0., 0.).
-        convergence_condition : float, optional      (現在使っていません)
+        convergence_condition : float, optional
             The convergence condition for the ICP algorithm. Defaults to 0.01.
 
         Returns
@@ -151,6 +151,8 @@ class ICP:
             The maximum number of iterations.
         residual_list : float
             The list of the residual.
+        residual_ptop_list : float
+            The list of the point to point residual.
         """
         print("Showing progress log:")
         for i in range(max_step + 1):

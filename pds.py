@@ -62,16 +62,17 @@ if __name__ == "__main__":
     import matplotlib
     import matplotlib.pyplot as plt
     matplotlib.use('TkAgg')
+    plt.style.use('dark_background')
 
-    points = np.random.uniform(0, 100, (500, 3))
+    points = np.random.uniform(0, 1000, (1000, 3))
     pds = PoissonDiskSampler(points, 10)
     sampled_indices = pds.sample(50)
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection='3d')
     ax.scatter(
         points[:, 0], points[:, 1], points[:, 2],
-        color='b', label='Original Points')
+        color='b', alpha=0.5, s=10, label='Original Points')
     ax.scatter(
         points[sampled_indices, 0],
         points[sampled_indices, 1],

@@ -1,9 +1,10 @@
 # parameters for color ICP
-# https://openaccess.thecvf.com/content_ICCV_2017/papers/Park_Colored_Point_Cloud_ICCV_2017_paper.pdf
+# J. Park, Q.-Y. Zhou, V. Koltun,
+# Colored Point Cloud Registration Revisited, ICCV 2017.
+
 # for objective function E(T) (eq. 17)
 color_icp_delta: 0.968
 # for C(p) (eq. 8)
 rgb_to_intensity_weight:
   - [0.2126, 0.7152, 0.0722]  # sRGB (and Rec709)
   - [0.299, 0.587, 0.114]  # YIQ, YUV and NTSC
-
