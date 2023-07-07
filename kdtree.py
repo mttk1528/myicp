@@ -1,3 +1,12 @@
+"""
+This module implements a KDTree class with Node class,
+a space-partitioning data structure for organizing points in a k-dimensional
+space.
+
+The KDTree class provides the following functionalities:
+    - Building a KDTree from a set of points in k-dimensional space.
+    - Querying the KDTree for k nearest neighbors to a given point.
+"""
 import numpy as np
 import heapq
 from typing import List, Tuple, Optional, Union

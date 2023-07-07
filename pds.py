@@ -1,3 +1,13 @@
+"""
+This module implements Poisson Disk Sampling on a set of 3D points.
+
+The PoissonDiskSampler class offers the following functionalities:
+    - Initializing the Poisson Disk Sampler with an array of points
+        and a specified minimum distance between sampled points.
+    - Performing Poisson Disk Sampling on the initialized points.
+        The sampling process takes into account the minimum distance between
+        points to ensure the randomness and uniformity of the sampled points.
+"""
 import numpy as np
 from scipy.spatial import cKDTree
 

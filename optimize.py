@@ -1,3 +1,21 @@
+"""
+This module implements an optimization class for the ICP algorithm,
+used for aligning 3D point clouds.
+
+The Optimize class provides the following functionalities:
+    - Initializing the optimization process with various parameters, such as
+        the optimization method, fixed and moving (source) point clouds,
+        number of sample points, and initial homogeneous parameters.
+    - Updating the transformation matrix and moving point cloud according to
+        the selected optimization method, which can be one of "point to point",
+        "point to plane", or "color".
+    - Implementing different types of ICP algorithms as private methods:
+        _point_to_point_icp, _point_to_plane_icp and _color_icp. These methods
+        calculate the rotation matrix and translation vector (or homogenous
+        transformation matrix), and residual that minimize the distance
+        between the sampled points from the moving point cloud and their
+        corresponding points in the fixed point cloud.
+"""
 import numpy as np
 
 from typing import Tuple
@@ -164,9 +182,9 @@ class Optimize:
         Returns
         -------
         Tuple[np.ndarray, np.ndarray, float]
-            The rotation and translation that minimizes the distance
-            between the sample_points and their correspondence, and the
-            computed residual.
+            The rotation matrix and translation vector that
+            minimizes the distance between the sample_points
+            and their correspondence, and the computed residual.
         """
         # calculate R that maximizes \sum_i y_i \cdot R p_i in local coordinate
         mu_sample = np.mean(sample_points, axis=0)
@@ -229,8 +247,8 @@ class Optimize:
         Returns
         -------
         Tuple[np.ndarray, np.ndarray, float]
-            The rotation and translation that minimizes
-            the distance between the sample_points
+            The rotation matrix and translation vector that
+            minimizes the distance between the sample_points
             and their correspondence, and the computed residual.
         """
         # https://github.com/3d-point-cloud-processing/3dpcp_book_codes/blob/
@@ -301,7 +319,7 @@ class Optimize:
         Returns
         -------
         Tuple[np.ndarray, float]
-            The transformation matrix that minimizes the distance
+            The homogenous transformation matrix that minimizes the distance
             between the sample_points and their correspondence
             and the difference in color, and the computed residual.
         """

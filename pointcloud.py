@@ -1,4 +1,12 @@
-"""pointcloud class"""
+"""
+This module implements a PointCloud class to manage and operate on a set of
+3D points.
+
+The PointCloud class provides functionalities including:
+    - transforming the PointCloud with a homogeneous transformation matrix
+    - calculating the correspondence between the PointCloud and a set of points
+    - calculating the normal vectors of the points in the PointCloud
+"""
 import numpy as np
 from scipy.spatial import cKDTree
 from .kdtree import KDTree
@@ -148,7 +156,7 @@ class PointCloud():
             correspondence = self.projective_coordinate[idx]
             _, nearest_neighbor_idx_lst = self.kdtree.query(
                 x=correspondence,
-                k=neighbor_points_num + 1  # nearest neighbor is itself
+                k=neighbor_points_num + 1  # to exclude the correspondence
             )
             nearest_neighbor_lst = self.projective_coordinate[
                 nearest_neighbor_idx_lst[1:]]
@@ -156,4 +164,5 @@ class PointCloud():
             eigenvalues, eigenvectors = np.linalg.eig(C)
             normal_vector = eigenvectors[:, np.argmin(eigenvalues)]
             correspondence_normal_vectors[i] = normal_vector[:3]
+
         return correspondence_normal_vectors

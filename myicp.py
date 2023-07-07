@@ -1,12 +1,20 @@
-import numpy as np
+"""
+This module implements the Iterative Closest Point (ICP) algorithm for
+aligning 3D point clouds.
 
+The ICP class provides functionalities including:
+    - Initializing the algorithm with fixed (target) and moving (source) point
+        clouds, including an optional faster KDTree.
+    - Executing the ICP algorithm with several adjustable parameters like the
+        optimization method, maximum number of iterations (and convergence
+        condition).
+"""
+import numpy as np
 from typing import Tuple
+from tqdm import tqdm
+import time
 
 from . import pointcloud, optimize
-
-from tqdm import tqdm
-
-import time
 
 
 class ICP:
@@ -90,7 +98,7 @@ class ICP:
                        delimiter=" ")
             return None, self.pcd_mov.projective_coordinate
 
-        print(f'---Executing "{optimization_method}" ICP---')
+        print(f'---Executing {optimization_method} ICP---')
         optim = optimize.Optimize(
             optimization_method=optimization_method,
             pcd_fix=self.pcd_fix,
