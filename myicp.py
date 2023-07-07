@@ -62,7 +62,7 @@ class ICP:
         Parameters
         ----------
         optimization_method : str
-            The optimization method to use. Can be "point to point",
+            The optimization method to use. Can be "",
             "point to plane", or "color".
         max_iter : int
             The maximum number of iterations to perform.
@@ -80,8 +80,8 @@ class ICP:
         -------
         Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
             The final transformation matrix and the transformed
-            moving point cloud and the residual list, and
-            the point to point residual list.
+            moving point cloud and the residual list, and the average
+            point to point distance list (as residual).
         """
         time_start = time.time()
 
@@ -107,19 +107,19 @@ class ICP:
             init_homogeneous_params=init_homogeneous_params,
         )
         residual_list = np.zeros(max_iter)
-        residual_ptop_list = np.zeros(max_iter + 1)
+        residual_dist_list = np.zeros(max_iter + 1)
 
         # iterate optimization
         for step in tqdm(range(max_iter), bar_format="{l_bar}{bar:30}{r_bar}"):
             optim.update(step, neighbor_points_num)
             residual_list[step] = optim.residual
-            residual_ptop_list[step + 1] = optim.residual_ptop
+            residual_dist_list[step + 1] = optim.residual_dist
             # if _check_convergence(step, convergence_condition):
             #     pass
             if step == max_iter - 1:
                 print("Reached max iteration!  ", end="")
-        residual_ptop_list[0] = optim.residual_ptop_init
-        self._print_result(step, residual_list, residual_ptop_list)
+        residual_dist_list[0] = optim.residual_dist_init
+        self._print_result(step, residual_list, residual_dist_list)
         H_result = optim.H_ret
         transformed_pcd_mov = np.hstack((
             self.pcd_mov.projective_coordinate,
@@ -130,7 +130,7 @@ class ICP:
 
         time_end = time.time()
         print(f"Total execution time: {(time_end - time_start):.5f}s")
-        return H_result, transformed_pcd_mov, residual_list, residual_ptop_list
+        return H_result, transformed_pcd_mov, residual_list, residual_dist_list
 
     # def _check_convergence(
     #         self, step: int, convergence_condition: float = 0.01):
@@ -148,10 +148,10 @@ class ICP:
         self,
         max_step: int,
         residual_list: np.ndarray,
-        residual_ptop_list: np.ndarray
+        residual_dist_list: np.ndarray
     ) -> None:
         """
-        Prints the status of the current iteration of the ICP algorithm.
+        Prints the result of the ICP algorithm execution.
 
         Parameters
         ----------
@@ -159,8 +159,8 @@ class ICP:
             The maximum number of iterations.
         residual_list : float
             The list of the residual.
-        residual_ptop_list : float
-            The list of the point to point residual.
+        residual_dist_list : float
+            The list of the point to point distance as residual.
         """
         print("Showing progress log:")
         for i in range(max_step + 1):
@@ -169,20 +169,20 @@ class ICP:
                 print(
                     f"| {'iteration':^9s}   "
                     f"{'residuals':^12s} "
-                    f"  {'residuals(ptop)':^17s} | "
+                    f"  {'residuals(dist)':^17s} | "
                 )
             print(
                 f"| {i:^9d}   "
                 f"{residual_list[i]:^12.10f} "
-                f"  {residual_ptop_list[i]:^17.10f} |"
+                f"  {residual_dist_list[i]:^17.10f} |"
             )
             if i == max_step:
                 print("------------------------------------------------")
                 pass
         print("Final residual                  = {:.10f}"
               .format(residual_list[max_step]))
-        print("Final residual (point to point) = {:.10f}"
-              .format(residual_ptop_list[max_step]))
+        print("Final residual (average distance) = {:.10f}"
+              .format(residual_dist_list[max_step]))
 
         return None
 

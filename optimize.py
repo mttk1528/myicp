@@ -67,9 +67,8 @@ class Optimize:
             utils.homogenous_params_to_homogenous_transformation_matrix(
                 init_homogeneous_params)
         self.residual = 0.
-        self.residual_init = 0.
-        self.residual_ptop = 0.
-        self.residual_ptop_init = 0.
+        self.residual_dist = 0.
+        self.residual_dist_init = 0.
 
     def update(
         self,
@@ -112,10 +111,10 @@ class Optimize:
         # calculate initial residual
         if step == 0:
             for i in range(self.sample_points_num):
-                self.residual_ptop_init += np.linalg.norm(
+                self.residual_dist_init += np.linalg.norm(
                     correspondence[i] - sample_points[i]
                 )
-            self.residual_ptop_init /= self.sample_points_num
+            self.residual_dist_init /= self.sample_points_num
 
         # update homogenous transformation matrix H
         H_new = self.H
@@ -151,13 +150,13 @@ class Optimize:
         self.pcd_mov.homogenous_transformation(H_new)  # transform pcd_mov
         self.H_ret = np.dot(H_new, self.H_ret)  # update final H
 
-        self.residual_ptop = 0
+        self.residual_dist = 0
         for i in range(self.sample_points_num):
-            self.residual_ptop += np.linalg.norm(
+            self.residual_dist += np.linalg.norm(
                 correspondence[i] -
                 self.pcd_mov.projective_coordinate[indices[i]]
             )
-        self.residual_ptop /= self.sample_points_num
+        self.residual_dist /= self.sample_points_num
 
         return None
 
@@ -342,7 +341,7 @@ class Optimize:
                        rgb_to_intensity_weight.reshape(3, 1))
                 ) / 255.
             nn_num = 10  # num of nearest neighbor, temp value
-            nn_dists, nn_idxs = self.pcd_fix.kdtree.query(p, k=nn_num)
+            _, nn_idxs = self.pcd_fix.kdtree.query(p, k=nn_num)
             # solve a linear least square problem, (eq.10)
             A = np.zeros((3, nn_num))
             b = np.zeros(nn_num)
@@ -400,8 +399,8 @@ class Optimize:
                        rgb_to_intensity_weight.reshape(3, 1))
                 ) / 255.
 
-            r_geo[i] = np.dot(q - p, n_p)  # eq. 19
-            J_geo[:, i] = np.hstack((np.cross(q, n_p), n_p))  # eq. 30
+            r_geo[i] = np.dot(q - p, n_p)  # eq.19
+            J_geo[:, i] = np.hstack((np.cross(q, n_p), n_p))  # eq.30
 
             q_proj = q - np.dot(q - p, n_p) * n_p  # project q onto the plane
             i_q_proj = i_p + np.dot(dp, q_proj - p)
@@ -410,9 +409,9 @@ class Optimize:
             dp_M = np.dot(dp.T, M)
 
             r_col[i] = i_q_proj - i_q  # eq. 18
-            J_col[:, i] = np.hstack((np.cross(q, dp_M), dp_M))  # eq. 28-29
+            J_col[:, i] = np.hstack((np.cross(q, dp_M), dp_M))  # eq.28-29
 
-        # solve eq.21 to obtain homogenous parameters
+        # eq.21-17
         JTJ_geo = np.dot(J_geo, J_geo.T)
         JTr_geo = np.dot(J_geo, r_geo)
         JTJ_col = np.dot(J_col, J_col.T)
@@ -421,14 +420,15 @@ class Optimize:
         JTJ = np.sqrt(delta) * JTJ_geo + np.sqrt(1 - delta) * JTJ_col
         JTr = np.sqrt(delta) * JTr_geo + np.sqrt(1 - delta) * JTr_col
 
-        # X = np.linalg.solve(JTJ, -JTr)
+        # solve eq.21 to obtain homogenous parameters
         try:
             X = np.dot(np.linalg.inv(JTJ), -JTr)
         except np.linalg.LinAlgError:
             X = np.dot(np.linalg.pinv(JTJ), -JTr)
         H = utils.homogenous_params_to_homogenous_transformation_matrix(X)
+
         residual = delta * float(np.dot(r_geo, r_geo.T)) +\
-            (1 - delta) * float(np.dot(r_col, r_col.T))  # eq.????????????????
+            (1 - delta) * float(np.dot(r_col, r_col.T))  # eq.17
         residual /= self.sample_points_num
 
         return H, residual
