@@ -67,6 +67,14 @@ class KDTree:
         distances and indices of the k nearest neighbors.
     """
     def __init__(self, points: np.ndarray) -> None:
+        """
+        Construct a KDTree instance.
+
+        Parameters
+        ----------
+        points : np.ndarray
+            The points in k-dimensional space to build the KDTree from.
+        """
         self.points = points
         self.indices = np.arange(points.shape[0])
         self.root = self._build(points, np.arange(points.shape[0]), 0)
@@ -74,6 +82,23 @@ class KDTree:
     def _build(
             self, points: np.ndarray, indices: np.ndarray, split_dim: int
             ) -> Optional[Node]:
+        """
+        Recursive method to build the KDTree.
+
+        Parameters
+        ----------
+        points : np.ndarray
+            The points in k-dimensional space.
+        indices : np.ndarray
+            The indices of the points in the original dataset.
+        split_dim : int
+            The dimension along which to split the points.
+
+        Returns
+        -------
+        Node or None
+            The root of the built (sub-)tree.
+        """
         if len(points) == 0:
             return None
         argsort_indices = points[:, split_dim].argsort()
@@ -91,6 +116,19 @@ class KDTree:
         )
 
     def _distance(self, point1: np.ndarray, point2: np.ndarray) -> float:
+        """
+        Compute the Euclidean distance between two points.
+
+        Parameters
+        ----------
+        point1, point2 : np.ndarray
+            The points between which to compute the distance.
+
+        Returns
+        -------
+        float
+            The Euclidean distance between the two points.
+        """
         return np.linalg.norm(point1 - point2)
 
     def _k_nearest_neighbors(
@@ -100,6 +138,25 @@ class KDTree:
         k: int,
         so_far: List[Tuple[float, np.ndarray]]
     ) -> List[Tuple[float, np.ndarray]]:
+        """
+        Recursive method to find the k nearest neighbors of a given point.
+
+        Parameters
+        ----------
+        node : Node or None
+            The current node.
+        query_point : np.ndarray
+            The point to find the nearest neighbors of.
+        k : int
+            The number of nearest neighbors to find.
+        so_far : List[Tuple[float, np.ndarray]]
+            The current list of nearest neighbors.
+
+        Returns
+        -------
+        List[Tuple[float, np.ndarray]]
+            The updated list of nearest neighbors.
+        """
         if node is None:
             return so_far
         node_distance = self._distance(node.point, query_point)
@@ -121,6 +178,76 @@ class KDTree:
             return so_far
 
         return self._k_nearest_neighbors(away, query_point, k, so_far)
+
+    def _query_ball_point(
+        self,
+        node: Optional[Node],
+        query_point: np.ndarray,
+        r: float,
+        indices_in_range: List[int]
+    ) -> List[int]:
+        """
+        A private method to find all points in the KDTree within a radius r
+        of the given query point. This is a recursive function that traverses
+        the KDTree in a depth-first manner.
+
+        Parameters
+        ----------
+        node : Optional[Node]
+            The current node being inspected. This node will be None when
+            the function has traversed all relevant branches of the tree.
+        query_point : np.ndarray
+            The point from which to measure the distance r.
+        r : float
+            The radius within which to find all points in the KDTree.
+
+        Returns
+        -------
+        List[int]
+            A list of indices of all points within the KDTree that are within
+            a radius r of the query point.
+        """
+        if node is None:
+            return indices_in_range
+        node_distance = self._distance(node.point, query_point)
+        axis = node.split_dim
+        diff = query_point[axis] - node.point[axis]
+
+        if node_distance <= r:
+            indices_in_range.append(node.index)
+
+        if diff <= 0:
+            close, away = node.left, node.right
+        else:
+            close, away = node.right, node.left
+
+        indices_in_range = self._query_ball_point(close, query_point,
+                                                  r, indices_in_range)
+
+        if not away or diff > r:
+            return indices_in_range
+
+        return self._query_ball_point(away, query_point, r, indices_in_range)
+
+    def query_ball_point(self, x: np.ndarray, r: float) -> np.ndarray:
+        """
+        Query the KDTree for all points within a specified distance r to
+        a given point.
+
+        Parameters:
+        -----------
+        x : np.ndarray
+            The query point.
+        r : float
+            The distance within which to return all points.
+
+        Returns
+        -------
+        np.ndarray
+            The indices of all points within a distance r to the query point.
+        """
+        indices_in_range = self._query_ball_point(self.root, x, r, [])
+        return np.array(indices_in_range)
 
     def query(
             self, x: np.ndarray, k: int) -> Tuple[
@@ -159,7 +286,7 @@ class KDTree:
 if __name__ == "__main__":
     from scipy.spatial import cKDTree
 
-    def test_kdtree(n_points=500, n_dim=3, n_query=100, k=10):
+    def test_kdtree(n_points=500, n_dim=3, n_query=100, k=10, r=0.5):
 
         points = np.random.rand(n_points, n_dim)
         query_points = np.random.rand(n_query, n_dim)
@@ -176,6 +303,11 @@ if __name__ == "__main__":
                     dists_custom[list(idxs_custom).index(i_custom)],
                     decimal=5
                 )
+            # test for query_ball_point
+            idxs_scipy = tree_scipy.query_ball_point(query, r)
+            idxs_custom = tree_custom.query_ball_point(query, r)
+            assert set(idxs_scipy) == set(idxs_custom),\
+                "Mismatch in query_ball_point indices."
 
         print("All tests passed.")
 
